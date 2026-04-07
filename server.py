@@ -3,7 +3,7 @@
 import uuid
 import time
 from collections import OrderedDict
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel
 from typing import Optional
 
@@ -42,13 +42,20 @@ class StepRequest(BaseModel):
     session_id: str
 
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "environment": "jobswitch-env", "version": "0.1.0"}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "environment": "jobswitch-env", "version": "0.1.0"}
 
 
 @app.post("/reset")
-async def reset(request: ResetRequest):
+async def reset(request: Optional[ResetRequest] = Body(default=None)):
+    if request is None:
+        request = ResetRequest()
     sid = request.session_id or str(uuid.uuid4())
     env = JobSwitchEnvironment()
 
