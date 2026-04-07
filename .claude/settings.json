@@ -7,7 +7,9 @@
       "Bash(wc -l \"C:\\\\Users\\\\shaya\\\\Downloads\\\\jobswitch-env\"/**/*.py)",
       "Bash(pip show:*)",
       "Bash(python -m pytest tests/ -q)",
-      "Bash(python -c \"import inference; print\\('inference.py imports OK'\\)\")"
+      "Bash(python -c \"import inference; print\\('inference.py imports OK'\\)\")",
+      "Bash(pip install:*)",
+      "Bash(openenv validate:*)"
     ]
   }
 }
