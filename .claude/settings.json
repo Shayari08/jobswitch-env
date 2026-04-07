@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_models.py tests/test_simulation.py tests/test_graders.py -v)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python baseline/run_baseline.py)",
+      "Bash(wc -l \"C:\\\\Users\\\\shaya\\\\Downloads\\\\jobswitch-env\"/**/*.py)",
+      "Bash(pip show:*)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -c \"import inference; print\\('inference.py imports OK'\\)\")"
+    ]
+  }
+}

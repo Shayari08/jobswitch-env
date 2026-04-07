@@ -1,0 +1,350 @@
+name: jobswitch-env
+version: '0.1.0'
+description: 'End-to-end job search navigation environment for RL training'
+tags: ['openenv', 'career', 'job-search', 'negotiation', 'agentic']
+author: 'Shayari Bagchi'
+license: MIT
+
+tasks:
+  - id: task1_straightforward
+    name: 'The Straightforward Pivot'
+    difficulty: easy
+    max_steps: 20
+    expected_score_range: [0.70, 0.85]
+    description: >
+      Two warm contacts at target companies (warmth ~0.65). Market actively
+      hiring. Ample financial runway. Tests referral-before-cold-apply and
+      parallel pipeline management.
+
+  - id: task2_cold_network
+    name: 'The Cold Network Problem'
+    difficulty: medium
+    max_steps: 25
+    expected_score_range: [0.40, 0.60]
+    description: >
+      Zero warm connections (warmth 0.10-0.25). One urgent company with a
+      hard deadline at step 8. Social capital starts at 0.50 (vs default 1.0).
+      Non-obvious insight: 4 steps of network investment dominates 4 cold apps.
+
+  - id: task3_competing_pressures
+    name: 'The Competing Pressures'
+    difficulty: hard
+    max_steps: 30
+    expected_score_range: [0.15, 0.35]
+    description: >
+      Exploding offer at 70% market rate (deadline step 4). Two mid-stage
+      pipelines at better companies. Cold key contact. Financial runway = 5
+      steps. Multi-objective: delay offer, re-warm contact, accelerate pipelines.
+
+num_actions: 17
+action_space: discrete
+observation_space: structured
+reward_range: [0.0, 1.0]
+episode_boundary: offer_accepted_or_step_limit
+
+# ---------------------------------------------------------------------------
+# Actions
+# ---------------------------------------------------------------------------
+actions:
+
+  research_company:
+    phase: targeting
+    params:
+      target: company_name (str)
+    social_capital_cost: 0.0
+    effect: >
+      Moves the company's noisy hiring_signal 60% of the distance toward
+      ground truth. Reduces uncertainty without committing to an application.
+    step_reward: 0.0
+
+  add_to_targets:
+    phase: targeting
+    params:
+      company: str
+    social_capital_cost: 0.0
+    effect: Adds company to the agent's active target list.
+    step_reward: 0.0
+
+  remove_target:
+    phase: targeting
+    params:
+      company: str
+    social_capital_cost: 0.0
+    effect: Removes company from target list. Frees attention capacity.
+    step_reward: 0.0
+
+  wait_for_signal:
+    phase: targeting
+    params: {}
+    social_capital_cost: 0.0
+    effect: No-op. Market signals update passively. Risk — roles may fill.
+    step_reward: 0.0
+
+  engage_content:
+    phase: network
+    params:
+      target: person_name (str)
+    social_capital_cost: 0.02
+    effect: +0.05 warmth on target contact (noisy). Low-cost warmth building.
+    step_reward: '+0.03 if warmth crosses the 0.40 threshold'
+
+  send_message:
+    phase: network
+    params:
+      target: person_name (str)
+      message_type: str  # e.g. "professional"
+    social_capital_cost: 0.10
+    effect: +0.15 warmth on target contact (noisy). Higher gain, higher cost.
+    step_reward: '+0.03 if warmth crosses the 0.40 threshold'
+
+  request_intro:
+    phase: network
+    params:
+      from_person: str  # the warm contact making the intro
+      to_person: str    # the target of the introduction
+    social_capital_cost: 0.08
+    effect: >
+      Asks from_person (must have warmth >= 0.30) to introduce to_person.
+      from_person warmth -0.05. to_person warmth +0.10.
+      Fails and burns bridge if from_person warmth < 0.30.
+    step_reward: '+0.03 if to_person warmth crosses 0.40 threshold'
+
+  request_referral:
+    phase: network
+    params:
+      target: person_name (str)
+      company: str
+    social_capital_cost: 0.05  # or 0.10 on success
+    effect: >
+      Asks contact for a referral to company.
+      warmth >= 0.60: SUCCESS — referral granted. +0.05 step reward.
+      warmth 0.40-0.59: SILENT FAIL — costs warmth, no referral.
+      warmth < 0.40: BRIDGE BURNED — -0.20 warmth, permanent damage, -0.15 terminal penalty.
+    step_reward: '+0.05 on success'
+
+  tailor_resume:
+    phase: application
+    params:
+      company: str
+      role_type: str  # e.g. "sde", "ml", "frontend"
+    social_capital_cost: 0.0
+    effect: Improves ATS pass rate for this company. Boosts screening probability.
+    step_reward: '+0.02 if ATS score improves by > 10 points'
+
+  apply_cold:
+    phase: application
+    params:
+      company: str
+      role: str
+    social_capital_cost: 0.0
+    pass_rate_to_screening: 0.10
+    effect: >
+      Submits application without referral. ~10% pass rate to screening.
+      Cannot apply twice to the same company.
+    step_reward: '+0.04 if application advanced to screening'
+
+  apply_with_referral:
+    phase: application
+    params:
+      company: str
+      role: str
+      referrer: str
+    social_capital_cost: 0.0
+    pass_rate_to_screening: 0.60
+    effect: >
+      Submits application with referral. ~60% pass rate to screening.
+      Requires a granted referral for this company (from request_referral).
+      If no referral was actually granted, downgrades to cold application.
+    step_reward: '+0.04 if advanced to screening'
+
+  advance_round:
+    phase: pipeline
+    params:
+      company: str
+    social_capital_cost: 0.0
+    effect: >
+      Schedules the next interview round at company. Probabilistic advancement:
+      screening→technical: 55%, technical→final: 45%, final→offer: 50%.
+      If stage reaches OFFER, an Offer object is created with deadline +5 steps.
+    step_reward: '+0.04 on success, +0.03 additional if OFFER stage reached'
+
+  request_delay:
+    phase: pipeline
+    params:
+      company: str
+      days: int  # 1-3 (capped at 3)
+    social_capital_cost: 0.0
+    effect: >
+      Extends offer deadline or pipeline expiry by min(days, 3) steps.
+      Costs warmth -0.05 for all people at that company.
+      Limited to 2 uses per company per episode.
+    step_reward: 0.0
+
+  accelerate_process:
+    phase: pipeline
+    params:
+      company: str
+    social_capital_cost: 0.0
+    effect: >
+      Signals urgency to advance the pipeline faster. Same mechanics as
+      advance_round but uses 1 of 2 allowed "desperation signals" if
+      called more than twice total across all companies.
+    step_reward: '+0.04 on success, +0.03 if OFFER stage reached'
+
+  drop_process:
+    phase: pipeline
+    params:
+      company: str
+    social_capital_cost: 0.0
+    effect: >
+      Abandons the active interview pipeline at company. Sets stage to REJECTED.
+      Use to free attention from low-value processes.
+    step_reward: 0.0
+
+  counter_offer:
+    phase: negotiation
+    params:
+      company: str
+      amount: float  # desired base salary
+      components:
+        equity: float       # desired equity (optional)
+        signing_bonus: float  # desired signing bonus (optional)
+    social_capital_cost: 0.0
+    effect: >
+      Initiates salary negotiation. Company meets 30-70% of the gap between
+      current offer and ask. If ask > 130% of current offer, deal collapses
+      (offer removed, desperation_signals +1).
+    step_reward: 0.0
+
+  accept_offer:
+    phase: negotiation
+    params:
+      company: str
+    social_capital_cost: 0.0
+    effect: >
+      Terminal action. Accepts the offer from company and ends the episode.
+      Triggers terminal reward computation.
+    step_reward: 'episode ends, terminal reward computed'
+
+# ---------------------------------------------------------------------------
+# Reward function
+# ---------------------------------------------------------------------------
+reward_function:
+  score_range: [0.0, 1.0]
+
+  components:
+    offer_quality:
+      weight: 0.35
+      formula: 'salary_ratio*0.5 + role_growth_potential*0.2 + culture_fit*0.2 + equity_bonus'
+      notes: >
+        salary_ratio = accepted_salary / market_rate (capped at 1.0).
+        equity_bonus = min(0.1, equity / market_rate).
+        role_growth_potential and culture_fit are offer-level properties [0,1].
+
+    process_efficiency:
+      weight: 0.20
+      formula: 'min(1.0, peak_parallel_pipelines / 3.0)'
+      notes: >
+        Rewards running multiple pipelines simultaneously. Score reaches 1.0
+        when the agent maintains 3+ concurrent active processes at peak.
+
+    network_health:
+      weight: 0.20
+      formula: 'min(1.0, avg_warmth_end / avg_warmth_start)'
+      notes: >
+        Measures whether the agent preserved or improved relationships over the
+        episode. Agents who spam referral requests degrade this score.
+
+    negotiation_quality:
+      weight: 0.15
+      formula: 'min(1.0, final_total_comp / first_offer_total_comp)'
+      notes: >
+        final_total_comp = accepted_salary + equity + signing_bonus.
+        first_offer_total_comp = same fields on the first offer received.
+        Score = 0.5 if only one offer and it was accepted without negotiating.
+
+    time_efficiency:
+      weight: 0.10
+      formula: 'max(0, 1.0 - steps / max_steps)'
+      notes: Faster episodes score higher. Rewards decisive, efficient play.
+
+  penalties:
+    no_offer_accepted:
+      value: -0.50
+      notes: Applied if episode ends without an accepted offer.
+    bridge_burned:
+      value: -0.15
+      per: bridge
+      notes: >
+        Fires when request_referral is called on a contact with warmth < 0.40.
+        Permanent warmth damage to that contact (-0.20).
+    desperation_signal:
+      value: -0.10
+      per: signal
+      max_count: 3
+      notes: >
+        Fires on social capital overdraft (< 0.10 after deduction),
+        overuse of accelerate_process (> 2 total), or counter_offer collapse.
+
+  intermediate_rewards:
+    warmth_threshold_crossed: +0.03
+    referral_obtained: +0.05
+    interview_round_advanced: +0.04
+    social_capital_overdraft: -0.05
+    pipeline_expired: -0.03
+    offer_deadline_expired: -0.03
+    intermediate_reward_cap: 0.30  # cumulative cap per episode
+
+# ---------------------------------------------------------------------------
+# Observation space
+# ---------------------------------------------------------------------------
+observation_space:
+  partial_observability: true
+  hidden_from_agent:
+    - true_hiring_state     # agent sees noisy hiring_signal only
+    - true_warmth           # agent sees referral_willingness_signal with Gaussian noise
+    - true_culture_match    # agent sees noisy estimate
+    - true_role_fit_score   # agent sees noisy estimate
+
+  fields:
+    step:               {type: int,   range: [0, max_steps]}
+    current_phase:      {type: int,   range: [1, 5]}
+    social_capital:     {type: float, range: [0.0, 1.0],  regen: 0.05_per_step}
+    financial_runway:   {type: float, desc: 'Steps before forced episode end'}
+    time_pressure:      {type: float, range: [0.0, 1.0],  formula: 'step / max_steps'}
+    target_companies:
+      type: list[dict]
+      fields: [name, hiring_signal (noisy), role_fit_score (noisy),
+               culture_match (noisy), known_salary_band, growth_stage]
+    network_graph:
+      type: dict
+      fields: [nodes: {warmth_signal (noisy), company, is_active_connector}]
+    active_pipeline:
+      type: list[dict]
+      fields: [company, current_round, expiry_step, feedback_signals]
+    offers_in_hand:
+      type: list[dict]
+      fields: [company, base_salary, equity, signing_bonus, deadline_step, negotiation_state]
+    profile_strength:
+      type: dict
+      fields: [skills (per-domain score), experience_months, seniority]
+    market_signals:
+      type: dict
+      fields: [per_company: {hiring_velocity, recent_layoffs, role_demand_trend}]
+    action_history:
+      type: list[dict]
+      desc: 'Last 10 actions taken'
+
+# ---------------------------------------------------------------------------
+# Interview pass rates
+# ---------------------------------------------------------------------------
+interview_pass_rates:
+  cold_application_to_screening: 0.10
+  referral_application_to_screening: 0.60
+  screening_to_technical: 0.55
+  technical_to_final: 0.45
+  final_to_offer: 0.50
+  notes: >
+    Pass rates are independent per stage. Expected probability of reaching an
+    offer from a referral application: 0.60 × 0.55 × 0.45 × 0.50 ≈ 0.074.
+    Each stage has an expiry of 4-5 steps after creation.
