@@ -101,6 +101,9 @@ class Observation(BaseModel):
     market_signals: dict = {}
     time_pressure: float = 0.0
     action_history: list[dict] = []
+    # Transparency fields — help agent make informed decisions
+    granted_referrals: dict = {}   # company -> referrer_person (you already obtained these)
+    valid_actions: list = []       # action types currently valid given state constraints
 
 
 class Reward(BaseModel):

@@ -334,6 +334,21 @@ observation_space:
     action_history:
       type: list[dict]
       desc: 'Last 10 actions taken'
+    granted_referrals:
+      type: dict
+      desc: 'Maps company_name → referrer_person for referrals already obtained'
+      notes: >
+        Populated when request_referral succeeds (warmth >= 0.60). The agent
+        must have a granted referral to use apply_with_referral at that company;
+        otherwise it downgrades to a cold application automatically.
+    valid_actions:
+      type: list[str]
+      desc: 'Action types currently executable given state constraints'
+      notes: >
+        Dynamically computed each step. Excludes pipeline-required actions when
+        no active pipeline exists, offer-required actions when no offers are in
+        hand, and phase-gated actions before their minimum step threshold.
+        Use this to avoid wasting steps on invalid actions.
 
 # ---------------------------------------------------------------------------
 # Interview pass rates

@@ -59,22 +59,26 @@ class Task1(BaseTask):
         score = 0.0
 
         # (0.30) Did agent get referrals THEN apply with them?
-        # Must have: request_referral succeeded, then apply_with_referral at same company
         referral_companies = set(state.granted_referrals.keys())
         applied_with_ref = [
             a for a in history
             if a.get("action_type") == "apply_with_referral"
             and (a.get("parameters", {}).get("company") or a.get("target")) in referral_companies
         ]
-        if len(applied_with_ref) >= 1:
-            # Full credit: obtained referral AND used it properly
+        if len(applied_with_ref) >= 2:
+            # Full credit: obtained and used multiple referrals
             score += 0.30
+        elif len(applied_with_ref) >= 1:
+            # Good: obtained and used at least one referral
+            score += 0.22
         elif len(referral_companies) >= 1:
-            # Partial: got referral but didn't apply with it
+            # Partial: got referral but didn't use it with apply_with_referral
             score += 0.10
+        elif any(a.get("action_type") == "request_referral" for a in history):
+            # At least tried: requested a referral
+            score += 0.03
 
         # (0.25) Did it run >= 2 CONCURRENT pipelines at actively hiring companies?
-        # Must be at companies that are actually hiring (not random spam)
         hiring_companies = {
             name for name, d in env.market.companies.items()
             if d["true_hiring_state"]
@@ -88,21 +92,36 @@ class Task1(BaseTask):
             score += 0.25
         elif state.peak_parallel_pipelines >= 2 and pipeline_at_hiring >= 2:
             score += 0.20
+        elif state.peak_parallel_pipelines >= 2:
+            score += 0.10
+        elif pipeline_at_hiring >= 1:
+            score += 0.05
 
-        # (0.25) Did it accept an offer with salary >= 85% of market rate?
+        # (0.25) Did it accept an offer with salary >= 80% of market rate?
         if state.accepted_offer:
             ratio = state.accepted_offer.base_salary / max(state.market_rate, 1)
-            if ratio >= 0.9:
+            if ratio >= 0.90:
                 score += 0.25
-            elif ratio >= 0.8:
-                score += 0.15
+            elif ratio >= 0.80:
+                score += 0.18
+            elif ratio >= 0.70:
+                score += 0.10
+            else:
+                score += 0.05  # at least got an offer
+        elif any(a.get("action_type") == "advance_round" for a in history):
+            # Partial: made progress through pipeline but didn't close
+            score += 0.05
 
         # (0.20) Network warmth: must have IMPROVED warmth, not just preserved
         nh_result = grade_network_health(state, env.network)
         nh = nh_result["score"]
         if nh >= 1.1:
             score += 0.20  # genuinely improved the network
-        elif nh >= 0.95:
-            score += 0.10
+        elif nh >= 1.0:
+            score += 0.15  # preserved warmth
+        elif nh >= 0.90:
+            score += 0.08
+        elif nh >= 0.70:
+            score += 0.03
 
         return min(1.0, score)

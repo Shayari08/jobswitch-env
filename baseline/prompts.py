@@ -197,6 +197,20 @@ def format_observation_as_prompt(obs: dict) -> str:
                 f"trend={data.get('role_demand_trend', '?')}"
             )
 
+    # Granted referrals — CRITICAL: show prominently so agent knows to use them
+    granted_referrals = obs.get("granted_referrals", {})
+    if granted_referrals:
+        lines.append("\n### Granted Referrals (USE THESE — apply_with_referral now available)")
+        for company, referrer in granted_referrals.items():
+            lines.append(f"- {company}: referred by {referrer} → use apply_with_referral")
+    else:
+        lines.append("\n### Granted Referrals: none yet (build warmth ≥ 0.60 first)")
+
+    # Valid actions — help agent avoid wasted steps
+    valid_actions = obs.get("valid_actions", [])
+    if valid_actions:
+        lines.append(f"\n### Currently Valid Actions: {', '.join(valid_actions)}")
+
     # Last 3 actions taken
     history = obs.get("action_history", [])
     if history:
@@ -208,5 +222,5 @@ def format_observation_as_prompt(obs: dict) -> str:
                 f"params={a.get('parameters', {})}"
             )
 
-    lines.append("\nWhat is your next action? Respond with valid JSON.")
+    lines.append("\nWhat is your next action? Respond with valid JSON only.")
     return "\n".join(lines)

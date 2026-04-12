@@ -178,6 +178,23 @@ class JobSwitchEnvironment:
 
     # ─── Observation builder ─────────────────────────────────────
 
+    def _compute_valid_actions(self) -> list:
+        """Compute which action types are currently executable given state."""
+        has_active_pipeline = bool(self.pipeline.get_active_processes()) if self.pipeline else False
+        has_offer = bool(self.state.offers)
+
+        valid = []
+        for at in ActionType:
+            min_step = ACTION_MIN_STEP.get(at, 0)
+            if self.state.step < min_step:
+                continue
+            if at in PIPELINE_REQUIRED_ACTIONS and not has_active_pipeline:
+                continue
+            if at in OFFER_REQUIRED_ACTIONS and not has_offer:
+                continue
+            valid.append(at.value)
+        return valid
+
     def _build_observation(self) -> Observation:
         return Observation(
             step=self.state.step,
@@ -211,6 +228,8 @@ class JobSwitchEnvironment:
                 a if isinstance(a, dict) else a
                 for a in self.state.action_history[-10:]
             ],
+            granted_referrals=dict(self.state.granted_referrals),
+            valid_actions=self._compute_valid_actions(),
         )
 
     def _phase_to_int(self, phase: Phase) -> int:

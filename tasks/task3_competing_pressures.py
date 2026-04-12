@@ -69,8 +69,11 @@ class Task3(BaseTask):
         for name in ("TechCorp", "MegaSoft"):
             if name in env.market.companies:
                 env.market.companies[name]["true_hiring_state"] = True
+                env.market.companies[name]["hiring_signal"] = min(
+                    1.0, 0.85 + env.market.rng.gauss(0, 0.05)
+                )
 
-        # Key contact went cold
+        # Key contact went cold — Jack Brown at MegaSoft
         if "Jack Brown" in env.network.graph:
             env.network.graph.nodes["Jack Brown"]["warmth"] = 0.30
             env.network.graph.nodes["Jack Brown"]["referral_willingness_signal"] = 0.28
@@ -98,8 +101,17 @@ class Task3(BaseTask):
         )
         if early_delays_on_cloudbase >= 1:
             score += 0.25
+        else:
+            # Partial: any delay on CloudBase (even slightly late)
+            any_cloudbase_delay = any(
+                a.get("action_type") == "request_delay"
+                and (a.get("parameters", {}).get("company") or a.get("target")) == "CloudBase"
+                for a in history
+            )
+            if any_cloudbase_delay:
+                score += 0.10
 
-        # (0.25) Acceleration: did agent advance BOTH promising pipelines?
+        # (0.25) Pipeline management: did agent advance BOTH promising pipelines?
         advanced_companies = set()
         for a in history:
             at = a.get("action_type", "")
@@ -110,23 +122,30 @@ class Task3(BaseTask):
         if len(advanced_companies) >= 2:
             score += 0.25
         elif len(advanced_companies) >= 1:
-            score += 0.10
+            score += 0.12
+        elif any(a.get("action_type") == "advance_round" for a in history):
+            score += 0.05  # advanced some pipeline
 
-        # (0.30) Final offer quality: did agent end up with a BETTER offer than
-        # the mediocre 70% one? Must beat the initial CloudBase offer.
+        # (0.30) Final offer quality: accepted a better offer than the mediocre 70% one?
         if state.accepted_offer:
             mediocre_salary = state.market_rate * 0.70
-            if state.accepted_offer.base_salary > mediocre_salary * 1.15:
-                # Accepted a significantly better offer
-                score += 0.30
-            elif state.accepted_offer.base_salary > mediocre_salary * 1.0:
-                # Accepted a slightly better offer (or negotiated the mediocre one up)
+            accepted_sal = state.accepted_offer.base_salary
+            if state.accepted_offer.company != "CloudBase":
+                # Accepted from a different, likely better company
+                if accepted_sal > mediocre_salary * 1.15:
+                    score += 0.30  # significantly better
+                else:
+                    score += 0.20  # different company, even if similar salary
+            elif accepted_sal > mediocre_salary * 1.08:
+                # Negotiated the CloudBase offer up meaningfully
                 score += 0.15
-            elif state.accepted_offer.company != "CloudBase":
-                # At least didn't just accept the bad one
-                score += 0.10
+            elif accepted_sal > mediocre_salary:
+                # Slightly improved CloudBase offer
+                score += 0.08
+            else:
+                score += 0.03  # at least got an offer
 
-        # (0.20) Did NOT panic-accept the mediocre offer as very first action
+        # (0.20) Strategic patience: did NOT panic-accept as first action?
         if history:
             first = history[0]
             if first.get("action_type") == "accept_offer":
@@ -136,7 +155,13 @@ class Task3(BaseTask):
                 # Survived and accepted something
                 score += 0.20
             else:
-                # Ran out of steps without accepting — partial credit for trying
-                score += 0.05
+                # Ran out of steps — partial credit for strategic attempts
+                n_strategic = sum(
+                    1 for a in history
+                    if a.get("action_type") in (
+                        "request_delay", "advance_round", "accelerate_process"
+                    )
+                )
+                score += min(0.10, n_strategic * 0.02)
 
         return min(1.0, score)
