@@ -457,7 +457,7 @@ async def run_task(client: OpenAI, task_class) -> None:
                 break
 
         score = float(task.grade())
-        score = min(max(score, 0.0), 1.0)
+        score = min(max(score, 1e-4), 1.0 - 1e-4)  # strictly (0, 1)
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as exc:
